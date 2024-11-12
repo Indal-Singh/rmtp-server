@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RTMP Stream Publisher</title>
+    <style>
+        video {
+            width: 640px;
+            height: 480px;
+            border: 1px solid #333;
+        }
+    </style>
+</head>
+<body>
+    <h1>RTMP Stream Publisher</h1>
+    <video id="video-preview" autoplay muted></video>
+    <button id="start-button">Start Stream</button>
+    <button id="stop-button" disabled>Stop Stream</button>
+
+    <script>
+        let mediaStream = null;
+        let mediaRecorder = null;
+        let serverUrl = "rtmp://localhost/live/stream"; // Replace with your server RTMP URL
+
+        document.getElementById("start-button").addEventListener("click", async () => {
+            try {
+                // Get access to camera and microphone
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                document.getElementById("video-preview").srcObject = mediaStream;
+
+                // Here you would need to convert the mediaStream to an RTMP stream
+                // For this example, we only preview the stream. To publish it, consider
+                // using an RTMP/WebRTC bridge like FFmpeg or GStreamer.
+                startStreaming(mediaStream);
+
+                document.getElementById("start-button").disabled = true;
+                document.getElementById("stop-button").disabled = false;
+            } catch (error) {
+                console.error("Error accessing media devices.", error);
+            }
+        });
+
+        document.getElementById("stop-button").addEventListener("click", () => {
+            stopStreaming();
+            document.getElementById("start-button").disabled = false;
+            document.getElementById("stop-button").disabled = true;
+        });
+
+        function startStreaming(stream) {
+            // Convert mediaStream to RTMP using MediaRecorder or WebRTC to RTMP bridge (e.g., Nginx RTMP, FFmpeg)
+            // MediaRecorder example (stores in chunks; not direct RTMP stream)
+            mediaRecorder = new MediaRecorder(stream, { mimeType: 'video/webm; codecs="vp8,opus"' });
+            mediaRecorder.ondataavailable = function(event) {
+                if (event.data.size > 0) {
+                    // Send data to RTMP server here
+                    console.log("Streaming data chunk...");
+                }
+            };
+            mediaRecorder.start(1000); // Collect data in 1-second chunks
+        }
+
+        function stopStreaming() {
+            if (mediaRecorder) {
+                mediaRecorder.stop();
+                mediaStream.getTracks().forEach(track => track.stop()); // Stop all media tracks
+                console.log("Stopped streaming.");
+            }
+        }
+    </script>
+</body>
+</html>

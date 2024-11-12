@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HLS Stream</title>
+    <link href="https://vjs.zencdn.net/7.16.0/video-js.css" rel="stylesheet">
+    <script src="https://vjs.zencdn.net/7.16.0/video.min.js"></script>
+</head>
+<body>
+    <video id="my-video" class="video-js vjs-default-skin" controls preload="auto" width="600" height="300">
+        <source src="http://localhost:8000/live/stream/index.m3u8" type="application/x-mpegURL">
+    </video>
+    <script>
+        var player = videojs('my-video');
+        player.ready(function() {
+            console.log("Video.js player is ready!");
+        });
+    </script>
+</body>
+</html>
