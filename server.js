@@ -5,13 +5,16 @@ import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import { spawn } from 'child_process';
 import fs from 'fs';
+import { configDotenv } from 'dotenv';
+configDotenv(); 
+
 
 // Resolve __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-const PORT = 3004; // Port for Express server
+const PORT = process.env.HTTP_PORT || 3006; // Port for Express server
 
 app.use(express.static(path.join(__dirname, 'public')));
 // Set up the Express server
@@ -33,19 +36,19 @@ app.listen(PORT, () => {
 
 const config = {
   rtmp: {
-    port: 1935,
+    port: process.env.RTMP_SERVER_PORT || 1935,
     chunk_size: 60000,
     gop_cache: true,
     ping: 30,
     ping_timeout: 60,
   },
   http: {
-    port: 8002,
+    port: process.env.RTMP_HTTP_PORT || 8002,
     mediaroot: './media',
     allow_origin: '*',
   },
   trans: {
-    ffmpeg: 'C:/Users/SISE/AppData/Local/Microsoft/WinGet/Links/ffmpeg.exe',
+    ffmpeg: process.env.FFMPEG_PATH || 'ffmpeg', // Path to ffmpeg executable
     tasks: [
       {
         app: 'live',
@@ -58,11 +61,7 @@ const config = {
         hls: true,
         hlsFlags: '[hls_time=2:hls_list_size=3:hls_flags=delete_segments]',
         dash: true,
-        dashFlags: '[f=dash:window_size=3:extra_window_size=5]',
-        record: true, // Enable recording
-        recordAll: true, // Record all streams
-        recordFileDuration: 0, // 0 means no duration limit for recordings (record indefinitely)
-        // recordFileMaxSize: 100 * 1024 * 1024, // Optional: max file size for recordings (in bytes), can be set as needed
+        dashFlags: '[f=dash:window_size=3:extra_window_size=5]'
       },
     ],
   },
@@ -86,29 +85,39 @@ const nms = new NodeMediaServer(config);
 //   console.log('[donePlay]', id, StreamPath, args);
 // });
 
+const activeRecordings = new Map();
+
 nms.on('postPublish', (id, streamPath, args) => {
   const streamKey = streamPath.split('/')[2]; // e.g. indal
+
+  // Avoid duplicate recording for the same stream key
+  if (activeRecordings.has(streamKey)) {
+    console.log(`Recording already active for: ${streamKey}`);
+    return;
+  }
+
   const recordingsDir = path.join(__dirname, 'recordings');
-  
-  // Make sure the directory exists
   if (!fs.existsSync(recordingsDir)) {
     fs.mkdirSync(recordingsDir, { recursive: true });
   }
 
   const filename = path.join(recordingsDir, `${streamKey}_${Date.now()}.mp4`);
-
   const ffmpeg = spawn('ffmpeg', [
-    '-i', `rtmp://localhost${streamPath}`,
-    '-c:v', 'libx264',    // Use libx264 for video encoding
-    '-c:a', 'aac',        // Use aac for audio encoding
+    '-i', `rtmp://${process.env.RTMP_HOST || 'localhost'}${streamPath}`,
+    '-c:v', 'libx264',
+    '-c:a', 'aac',
     '-strict', 'experimental',
     filename
   ]);
 
   console.log(`Recording started: ${filename}`);
+  activeRecordings.set(streamKey, ffmpeg);
 
   ffmpeg.stderr.on('data', data => console.log(data.toString()));
-  ffmpeg.on('close', code => console.log(`Recording ended: ${filename}`));
+  ffmpeg.on('close', code => {
+    console.log(`Recording ended: ${filename}`);
+    activeRecordings.delete(streamKey);
+  });
 });
 
 nms.run();
