@@ -8,14 +8,27 @@
     <script src="https://vjs.zencdn.net/7.16.0/video.min.js"></script>
 </head>
 <body>
+    <input type="text" id="video-source" placeholder="Enter video source URL" value ="http://127.0.0.1:8002/live/indal/index.m3u8" style="width: 400px;">
+    <button onclick="updateSource()">Load Video</button>
+    <br><br>
     <video id="my-video" class="video-js vjs-default-skin" controls preload="auto" width="600" height="300">
-        <source src="http://15.235.186.205:8000/live/stream/index.m3u8" type="application/x-mpegURL">
+        <source src="http://127.0.0.1:8002/live/indal/index.m3u8" type="application/x-mpegURL">
     </video>
     <script>
         var player = videojs('my-video');
         player.ready(function() {
             console.log("Video.js player is ready!");
         });
+
+        function updateSource() {
+            var sourceInput = document.getElementById('video-source').value;
+            if (sourceInput) {
+                player.src({ src: sourceInput, type: 'application/x-mpegURL' });
+                console.log("Video source updated to:", sourceInput);
+            } else {
+                alert("Please enter a valid video source URL.");
+            }
+        }
     </script>
 </body>
 </html>
