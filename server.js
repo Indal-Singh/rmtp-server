@@ -6,6 +6,8 @@ import { dirname } from 'path';
 import { spawn } from 'child_process';
 import fs from 'fs';
 import { configDotenv } from 'dotenv';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 configDotenv(); 
 
 
@@ -30,8 +32,14 @@ app.get('/publisher', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'publisher.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Express server is running on http://localhost:${PORT}`);
+const httpServer = createServer(app);
+const io = new SocketIOServer(httpServer, {
+  cors: { origin: "*" }
+});
+
+
+httpServer.listen(PORT, () => {
+  console.log(`Express + Socket.IO server running on http://localhost:${PORT}`);
 });
 
 const config = {
@@ -69,43 +77,29 @@ const config = {
 
 const nms = new NodeMediaServer(config);
 
-// nms.on('prePublish', (id, StreamPath, args) => {
-//   console.log('[prePublish]', id, StreamPath, args);
-// });
-// nms.on('postPublish', (id, StreamPath, args) => {
-//   console.log('[postPublish]', id, StreamPath, args);
-// });
-// nms.on('donePublish', (id, StreamPath, args) => {
-//   console.log('[donePublish]', id, StreamPath, args);
-// });
-// nms.on('postPlay', (id, StreamPath, args) => {
-//   console.log('[postPlay]', id, StreamPath, args);
-// });
-// nms.on('donePlay', (id, StreamPath, args) => {
-//   console.log('[donePlay]', id, StreamPath, args);
-// });
 
 const activeRecordings = new Map();
+const viewerCounts = new Map();
 
+// authentication logic
+// nms.on('prePublish', (id, streamPath, args) => {
+//   const streamKey = streamPath.split('/')[2]; // e.g. 'live/streamKey123'
 
-nms.on('prePublish', (id, streamPath, args) => {
-  const streamKey = streamPath.split('/')[2]; // e.g. 'live/streamKey123'
+//   // Replace this with your real stream key validation logic
+//   const validStreamKeys = ['indalsingh', 'streamKey123', 'myUser1']; // Ideally this should come from a database
 
-  // Replace this with your real stream key validation logic
-  const validStreamKeys = ['indalsingh', 'streamKey123', 'myUser1']; // Ideally this should come from a database
+//   console.log(`[prePublish] Stream key received: ${streamKey}`);
 
-  console.log(`[prePublish] Stream key received: ${streamKey}`);
-
-  if (!validStreamKeys.includes(streamKey)) {
-    console.log(`[prePublish] Rejected stream with invalid stream key: ${streamKey}`);
-    const session = nms.getSession(id);
-    if (session) {
-      session.reject(); // Reject unauthorized stream
-    }
-  } else {
-    console.log(`[prePublish] Accepted stream key: ${streamKey}`);
-  }
-});
+//   if (!validStreamKeys.includes(streamKey)) {
+//     console.log(`[prePublish] Rejected stream with invalid stream key: ${streamKey}`);
+//     const session = nms.getSession(id);
+//     if (session) {
+//       session.reject(); // Reject unauthorized stream
+//     }
+//   } else {
+//     console.log(`[prePublish] Accepted stream key: ${streamKey}`);
+//   }
+// });
 
 
 
@@ -135,12 +129,57 @@ nms.on('postPublish', (id, streamPath, args) => {
   console.log(`Recording started: ${filename}`);
   activeRecordings.set(streamKey, ffmpeg);
 
-  ffmpeg.stderr.on('data', data => console.log(data.toString()));
+  // ffmpeg.stderr.on('data', data => console.log(data.toString())); // capture ffmpeg logs
   ffmpeg.on('close', code => {
     console.log(`Recording ended: ${filename}`);
     activeRecordings.delete(streamKey);
   });
 });
+
+
+nms.on('donePublish', (id, streamPath, args) => {
+  const streamKey = streamPath.split('/')[2]; // Extract stream key
+  const streamDir = path.join(__dirname, 'media', 'live', streamKey);
+
+  console.log(`Stream ended for: ${streamKey}`);
+
+  // Kill ffmpeg process if still active
+  const ffmpeg = activeRecordings.get(streamKey);
+  if (ffmpeg) {
+    ffmpeg.kill('SIGINT');
+    activeRecordings.delete(streamKey);
+  }
+
+  // Delete the stream directory if it exists
+  fs.rm(streamDir, { recursive: true, force: true }, (err) => {
+    if (err) {
+      console.error(`Failed to delete stream folder: ${streamDir}`, err);
+    } else {
+      console.log(`Deleted stream folder: ${streamDir}`);
+    }
+  });
+});
+
+
+nms.on('postPlay', (id, streamPath, args) => {
+  const streamKey = streamPath.split('/')[2];
+  const current = viewerCounts.get(streamKey) || 0;
+  viewerCounts.set(streamKey, current + 1);
+
+  io.emit('viewer-update', { streamKey, viewers: viewerCounts.get(streamKey) });
+  console.log(`[postPlay] ${streamKey} viewers: ${viewerCounts.get(streamKey)}`);
+});
+
+nms.on('donePlay', (id, streamPath, args) => {
+  const streamKey = streamPath.split('/')[2];
+  const current = viewerCounts.get(streamKey) || 1;
+  const newCount = Math.max(current - 1, 0);
+  viewerCounts.set(streamKey, newCount);
+
+  io.emit('viewer-update', { streamKey, viewers: newCount });
+  console.log(`[donePlay] ${streamKey} viewers: ${newCount}`);
+});
+
 
 nms.run();
 
