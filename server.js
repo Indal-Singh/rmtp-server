@@ -87,6 +87,28 @@ const nms = new NodeMediaServer(config);
 
 const activeRecordings = new Map();
 
+
+nms.on('prePublish', (id, streamPath, args) => {
+  const streamKey = streamPath.split('/')[2]; // e.g. 'live/streamKey123'
+
+  // Replace this with your real stream key validation logic
+  const validStreamKeys = ['indalsingh', 'streamKey123', 'myUser1']; // Ideally this should come from a database
+
+  console.log(`[prePublish] Stream key received: ${streamKey}`);
+
+  if (!validStreamKeys.includes(streamKey)) {
+    console.log(`[prePublish] Rejected stream with invalid stream key: ${streamKey}`);
+    const session = nms.getSession(id);
+    if (session) {
+      session.reject(); // Reject unauthorized stream
+    }
+  } else {
+    console.log(`[prePublish] Accepted stream key: ${streamKey}`);
+  }
+});
+
+
+
 nms.on('postPublish', (id, streamPath, args) => {
   const streamKey = streamPath.split('/')[2]; // e.g. indal
 
