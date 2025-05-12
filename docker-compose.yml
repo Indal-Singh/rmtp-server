@@ -10,6 +10,7 @@ services:
       - "3006:3006"         # Express web server
     volumes:
       - ./recordings:/app/recordings
+      - ./snapshots:/app/snapshots
       - ./public:/app/public
     environment:
       - RTMP_HOST=localhost
