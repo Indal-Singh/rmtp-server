@@ -11,6 +11,9 @@ import { Server as SocketIOServer } from 'socket.io';
 configDotenv(); 
 
 
+const activeRecordings = new Map();
+const viewerMap = new Map();
+
 // Resolve __dirname for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -35,6 +38,39 @@ app.get('/publisher', (req, res) => {
 const httpServer = createServer(app);
 const io = new SocketIOServer(httpServer, {
   cors: { origin: "*" }
+});
+
+
+io.on('connection', (socket) => {
+  console.log('Socket connected:', socket.id);
+
+  socket.on('viewer-joined', ({ streamKey }) => {
+    if (!viewerMap.has(streamKey)) viewerMap.set(streamKey, new Set());
+    viewerMap.get(streamKey).add(socket.id);
+    emitViewerCount(streamKey);
+    // console.log(`Viewer joined: ${socket.id} for streamKey: ${streamKey}`);
+  });
+
+  socket.on('viewer-left', ({ streamKey }) => {
+    viewerMap.get(streamKey)?.delete(socket.id);
+    emitViewerCount(streamKey);
+    // console.log(`Viewer left: ${socket.id} for streamKey: ${streamKey}`);
+  });
+
+  socket.on('disconnect', () => {
+    for (const [streamKey, viewers] of viewerMap.entries()) {
+      if (viewers.delete(socket.id)) {
+        emitViewerCount(streamKey);
+        // console.log(`Socket disconnected: ${socket.id} from streamKey: ${streamKey}`);
+      }
+    }
+  });
+
+  function emitViewerCount(streamKey) {
+    const count = viewerMap.get(streamKey)?.size || 0;
+    io.emit('viewer-count', { streamKey, count });
+    // console.log(`Viewer count for ${streamKey}: ${count}`);
+  }
 });
 
 
@@ -77,10 +113,6 @@ const config = {
 
 const nms = new NodeMediaServer(config);
 
-
-const activeRecordings = new Map();
-const viewerCounts = new Map();
-
 // authentication logic
 // nms.on('prePublish', (id, streamPath, args) => {
 //   const streamKey = streamPath.split('/')[2]; // e.g. 'live/streamKey123'
@@ -104,6 +136,7 @@ const viewerCounts = new Map();
 
 
 nms.on('postPublish', (id, streamPath, args) => {
+  console.log(`[postPublish] Stream started: ${streamPath}`);
   const streamKey = streamPath.split('/')[2]; // e.g. indal
 
   // Avoid duplicate recording for the same stream key
@@ -138,6 +171,7 @@ nms.on('postPublish', (id, streamPath, args) => {
 
 
 nms.on('donePublish', (id, streamPath, args) => {
+  console.log(`[donePublish] Stream ended: ${streamPath}`);
   const streamKey = streamPath.split('/')[2]; // Extract stream key
   const streamDir = path.join(__dirname, 'media', 'live', streamKey);
 
@@ -160,25 +194,6 @@ nms.on('donePublish', (id, streamPath, args) => {
   });
 });
 
-
-nms.on('postPlay', (id, streamPath, args) => {
-  const streamKey = streamPath.split('/')[2];
-  const current = viewerCounts.get(streamKey) || 0;
-  viewerCounts.set(streamKey, current + 1);
-
-  io.emit('viewer-update', { streamKey, viewers: viewerCounts.get(streamKey) });
-  console.log(`[postPlay] ${streamKey} viewers: ${viewerCounts.get(streamKey)}`);
-});
-
-nms.on('donePlay', (id, streamPath, args) => {
-  const streamKey = streamPath.split('/')[2];
-  const current = viewerCounts.get(streamKey) || 1;
-  const newCount = Math.max(current - 1, 0);
-  viewerCounts.set(streamKey, newCount);
-
-  io.emit('viewer-update', { streamKey, viewers: newCount });
-  console.log(`[donePlay] ${streamKey} viewers: ${newCount}`);
-});
 
 
 nms.run();
