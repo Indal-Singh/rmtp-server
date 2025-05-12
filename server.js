@@ -8,6 +8,7 @@ import fs from 'fs';
 import { configDotenv } from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
+import { updateThumbnail } from './util.js'; 
 configDotenv(); 
 
 
@@ -138,6 +139,32 @@ const nms = new NodeMediaServer(config);
 nms.on('postPublish', (id, streamPath, args) => {
   console.log(`[postPublish] Stream started: ${streamPath}`);
   const streamKey = streamPath.split('/')[2]; // e.g. indal
+
+   // Take a snapshot after a few seconds
+  const snapshotsDir = path.join(__dirname, 'snapshots');
+  if (!fs.existsSync(snapshotsDir)) {
+    fs.mkdirSync(snapshotsDir, { recursive: true });
+  }
+
+  const snapshotFilename = path.join(snapshotsDir, `${streamKey}.jpg`);
+  const ffmpegSnapshot = spawn('ffmpeg', [
+    '-y', // Overwrite output files
+    '-i', `rtmp://${process.env.RTMP_HOST || 'localhost'}${streamPath}`,
+    '-ss', '5', // Take snapshot at 5 seconds
+    '-vframes', '1', // Capture only one frame
+    snapshotFilename
+  ]);
+
+  ffmpegSnapshot.on('close', (code) => {
+    if (code === 0) {
+      console.log(`Snapshot saved: ${snapshotFilename}`);
+      // You can add logic here to upload the snapshot to a server if needed
+      updateThumbnail(snapshotFilename, streamKey)
+    } else {
+      console.error(`Failed to take snapshot for stream: ${streamKey}`);
+    }
+  });
+
 
   // Avoid duplicate recording for the same stream key
   if (activeRecordings.has(streamKey)) {

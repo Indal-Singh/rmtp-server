@@ -1,25 +1,53 @@
+import { configDotenv } from "dotenv";
+import fs from "fs/promises";
+configDotenv();
+
 export async function makePostRequest(data) {
-    url = 'https://example.com/api';
-    const predefinedData = { key: 'value' };
-    const requestData = { ...predefinedData, ...data };
+  const url = process.env.MAIN_BACKEND_SERVER_API_END_POINT;
 
-    try {
-        const response = await fetch(url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(requestData),
-        });
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
 
-        if (!response.ok) {
-            throw new Error(`HTTP error! status: ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("Server Response:", errorText);
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const responseData = await response.json();
+    return responseData;
+  } catch (error) {
+    console.error("Error making POST request:", error.message);
+    throw error;
+  }
+}
+
+export async function updateThumbnail(filePath, streamKey) {
+  const fileBuffer = await fs.readFile(filePath);
+  const base64Image = fileBuffer.toString("base64");
+
+  const mimeType = "image/jpeg"; // Or detect dynamically
+
+  const data = {
+    streamKey,
+    apiKey: process.env.MAIN_BACKEND_SERVER_API_KEY,
+    thumbnail: `data:${mimeType};base64,${base64Image}`, // or just base64Image if that's what backend expects
+  };
+
+  const response = await makePostRequest(data);
+    if (response.success) {
+        // unlink the file
+        try {
+            await fs.unlink(filePath);
+            console.log(`File ${filePath} deleted successfully`);
+        } catch (err) {
+            console.error(`Error deleting file ${filePath}:`, err);
         }
-
-        const responseData = await response.json();
-        return responseData;
-    } catch (error) {
-        console.error('Error making POST request:', error.message);
-        throw error;
     }
 }
