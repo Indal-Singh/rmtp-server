@@ -8,7 +8,7 @@ import fs from 'fs';
 import { configDotenv } from 'dotenv';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
-import { updateThumbnail } from './util.js'; 
+import { updateThumbnail, uploadRecordedStream } from './util.js'; 
 configDotenv(); 
 
 
@@ -193,6 +193,13 @@ nms.on('postPublish', (id, streamPath, args) => {
   ffmpeg.on('close', code => {
     console.log(`Recording ended: ${filename}`);
     activeRecordings.delete(streamKey);
+    uploadRecordedStream(filename, streamKey)
+      .then(() => {
+        console.log(`File uploaded and deleted successfully: ${filename}`);
+      })
+      .catch((error) => {
+        console.error("Error:", error);
+      });
   });
 });
 
